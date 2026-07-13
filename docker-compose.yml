@@ -1,0 +1,37 @@
+services:
+  infinite-monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: fundacion-clinica-noel/infinite-monitor:${INFINITE_MONITOR_VERSION:-local}
+    container_name: plataforma-noel-infinite-monitor
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${INFINITE_MONITOR_PORT:-3010}:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      DATABASE_PATH: /app/data/widgets.db
+      PLATAFORMA_NOEL_API_URL: ${PLATAFORMA_NOEL_API_URL:-http://host.docker.internal:8000}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GOOGLE_GENERATIVE_AI_API_KEY: ${GOOGLE_GENERATIVE_AI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_STARTER_DISABLED: ${OPENROUTER_STARTER_DISABLED:-1}
+      SHARE_ID_SECRET: ${SHARE_ID_SECRET:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - infinite-monitor-data:/app/data
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+    mem_limit: ${INFINITE_MONITOR_MEMORY_LIMIT:-2g}
+    cpus: ${INFINITE_MONITOR_CPU_LIMIT:-2.0}
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  infinite-monitor-data:
+    name: plataforma-noel-infinite-monitor-data
