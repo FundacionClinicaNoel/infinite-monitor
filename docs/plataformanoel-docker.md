@@ -14,7 +14,7 @@ directamente a SQL Server.
 
 ## Configuración local
 
-Crear un archivo `.env.local` (ignorado por Git) o definir las variables en el sistema:
+Crear un archivo `.env.docker` (ignorado por Git) o definir las variables en el sistema:
 
 ```env
 INFINITE_MONITOR_PORT=3010
@@ -30,10 +30,10 @@ No guardar secretos ni direcciones privadas en `.env.example`.
 ## Construcción y arranque
 
 ```bash
-docker compose build
-docker compose up -d
-docker compose ps
-docker compose logs -f infinite-monitor
+docker compose --env-file .env.docker build
+docker compose --env-file .env.docker up -d
+docker compose --env-file .env.docker ps
+docker compose --env-file .env.docker logs -f infinite-monitor
 ```
 
 La interfaz queda disponible en `http://localhost:3010` y el estado del servicio en
@@ -49,8 +49,8 @@ de copias de seguridad.
 
 ```bash
 git pull
-docker compose build --pull
-docker compose up -d
+docker compose --env-file .env.docker build --pull
+docker compose --env-file .env.docker up -d
 ```
 
 ## Límites de seguridad
