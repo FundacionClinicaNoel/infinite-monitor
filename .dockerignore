@@ -1,0 +1,15 @@
+.git
+.github
+.husky
+.next
+node_modules
+data
+.env
+.env.*
+!.env.example
+npm-debug.log*
+README*.md
+assets
+coverage
+playwright-report
+test-results
