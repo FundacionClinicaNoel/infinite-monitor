@@ -1,0 +1,85 @@
+services:
+  infinite-monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile.noel
+    image: noel-infinite-monitor:local
+    restart: unless-stopped
+    environment:
+      NOEL_INTEGRATION_MODE: "true"
+      NOEL_LOCAL_ONLY: "true"
+      NOEL_SHARED_SECRET: ${NOEL_SHARED_SECRET:?Configura el secreto compartido}
+      NOEL_MODEL: ollama:${OLLAMA_MODEL:?Selecciona el modelo local}
+    networks: [local]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    volumes:
+      - infinite_data:/app/data
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/api/noel/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      options: {max-size: "10m", max-file: "3"}
+  ollama:
+    image: ${OLLAMA_IMAGE:?Configura una version de ollama/ollama}
+    restart: unless-stopped
+    environment:
+      OLLAMA_NO_CLOUD: "1"
+      OLLAMA_KEEP_ALIVE: "-1"
+      OLLAMA_NUM_PARALLEL: "1"
+    networks: [local]
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: [CMD, ollama, list]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging:
+      options: {max-size: "10m", max-file: "3"}
+  proxy:
+    image: nginx:stable-alpine
+    restart: unless-stopped
+    ports: ["8039:443"]
+    networks: [local]
+    depends_on:
+      infinite-monitor:
+        condition: service_healthy
+    volumes:
+      - ./deploy/noel-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deploy/certs:/etc/nginx/certs:ro
+    logging:
+      options: {max-size: "10m", max-file: "3"}
+  model-pull:
+    image: ${OLLAMA_IMAGE:?Configura una version de ollama/ollama}
+    profiles: [download]
+    environment:
+      OLLAMA_MODEL: ${OLLAMA_MODEL:?Selecciona el modelo local}
+      OLLAMA_NO_CLOUD: "1"
+    networks: [download]
+    volumes:
+      - ollama_models:/root/.ollama
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        ollama serve &
+        server=$$!
+        trap 'kill $$server' EXIT
+        attempts=0
+        until ollama list >/dev/null 2>&1; do
+          attempts=$$((attempts + 1))
+          [ $$attempts -lt 30 ] || exit 1
+          sleep 1
+        done
+        ollama pull "$$OLLAMA_MODEL"
+networks:
+  local:
+    internal: true
+  download: {}
+volumes:
+  infinite_data:
+  ollama_models:
