@@ -40,7 +40,10 @@ INFINITE_MONITOR_SHARED_SECRET ya no se leen: no pueden eludir una desactivació
 Para migrar una instalación de fase 2, registrar la misma URL y secreto desde el formulario y activar.
 La activación requiere el servicio actualizado con /api/noel/verify y las tablas de dashboards.
 
-## Configuración Infinite Monitor
+## Opción local para la clínica
+La instalación local usa Ollama y no requiere NOEL_MODEL_API_KEY. Ver [despliegue Docker local](noel-local-docker.md), con HTTPS en 8039. NOEL_LOCAL_ONLY=true bloquea proveedores externos. La verificación comprueba también que el modelo esté descargado.
+
+## Configuración Infinite Monitor con proveedor externo (opcional)
 NOEL_INTEGRATION_MODE=true
 NOEL_SHARED_SECRET=<mismo-secreto-guardado-en-Integraciones-API>
 NOEL_MODEL=<provider:model-id-compatible-con-salida-estructurada>

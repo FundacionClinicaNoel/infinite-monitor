@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createVerifier, NoelError, readLimitedBody } from "./auth";
 import { modelConfiguration } from "./model-config";
+import { verifyLocalModel } from "./local-model";
 
 const schema = z.object({ request_id: z.uuid() }).strict();
 
@@ -16,7 +17,8 @@ export function createVerificationHandler() {
         throw new NoelError(422, "Solicitud de verificación inválida.");
       }
       // Comprueba configuración local, no llama al proveedor ni consume tokens.
-      modelConfiguration();
+      const config = modelConfiguration();
+      if (config.localModelId) await verifyLocalModel(config.localModelId);
       return Response.json({ request_id: parsed.data.request_id, service: "noel-dashboard-generator", protocol: 1, configured: true },
         { headers: { "Cache-Control": "no-store" } });
     } catch (error) {

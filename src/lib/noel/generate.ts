@@ -1,12 +1,13 @@
 import { generateObject } from "ai";
 import { createModel } from "@/lib/create-model";
 import { modelConfiguration } from "./model-config";
+import { localModel } from "./local-model";
 import { type Envelope, proposalSchema } from "./contract";
 
 export async function generateProposal(envelope: Envelope, signal: AbortSignal) {
-  const { model, apiKey } = modelConfiguration();
+  const config = modelConfiguration();
   const result = await generateObject({
-    model: createModel(model, apiKey),
+    model: config.localModelId ? localModel(config.localModelId) : createModel(config.model, config.apiKey),
     schema: proposalSchema,
     maxRetries: 0,
     maxOutputTokens: 4000,
