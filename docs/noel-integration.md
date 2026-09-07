@@ -12,32 +12,50 @@ No accede directamente a SQL Server: Laravel usa sus modelos/servicios y conexio
 El catálogo disponible sigue siendo cirugia.ocupacion. Solicitudes fuera de ese catálogo devuelven 422.
 No incorpora predicciones, indicadores de retrasos ni honorarios que no existan en el catálogo.
 
-## Configuración Laravel
-INTELLIGENT_DASHBOARDS_ENABLED=true
-INFINITE_MONITOR_ENABLED=true
-INFINITE_MONITOR_URL=https://<host-del-servicio>
-INFINITE_MONITOR_SHARED_SECRET=<secreto-aleatorio-de-al-menos-32-caracteres>
+## Configuración Laravel: Integraciones API (fuente única)
+Se requieren las tablas existentes de Integraciones API y la migración de dashboards de fase 1.
+No hay migraciones nuevas. El módulo de dashboards queda disponible por defecto tras crear sus tablas;
+INTELLIGENT_DASHBOARDS_ENABLED=false sigue siendo un interruptor general de emergencia.
+Si fase 1 dejó esa variable explícitamente en false, cambiarla a true y regenerar config:cache.
 
-La URL es solo origen (sin rutas, credenciales ni query). HTTPS obligatorio salvo localhost en local/testing.
-Regenerar configuración de Laravel tras cambiar variables. Se requiere la migración de fase 1.
-No hay nuevas migraciones ni dependencias en fase 2.
+En Administración → Integraciones API → Infinite Monitor:
+1. Introducir el origen HTTPS del servicio (sin rutas, credenciales ni query), ambiente y secreto compartido.
+2. Marcar red privada cuando corresponda. Se autoriza exactamente el host introducido.
+3. Guardar configuración: crea el registro único INFINITE-MONITOR, endpoints GENERATE/VERIFY
+   y credencial HMAC NOEL_HMAC cifrada. Queda inactiva hasta verificarla.
+4. Probar conexión guardada: verifica HMAC y configuración local del modelo sin enviar datos clínicos
+   ni consumir tokens. Esto NO comprueba validez de la API key, cuota o compatibilidad real del modelo.
+5. Activar conexión guardada: vuelve a verificar y habilita generación. Abrir dashboards y probar una generación real.
+
+Al editar, secreto vacío conserva el existente; un valor nuevo rota su versión. Guardar desactiva
+hasta volver a verificar. Los cambios concurrentes se rechazan con 409. URL, endpoints, credenciales,
+vigencia, activación y auditoría se administran en las tablas del módulo existente.
+El adaptador aplica IntegracionUrlSecurityService y el transporte de IntegracionRequestFactory,
+con fijación de IP validada mediante cURL, verificación SSL y sin redirecciones.
+Los headers del protocolo son fijos; los headers personalizados no se usan en este adaptador.
+La credencial debe llamarse NOEL_HMAC, ser HMAC y contener {"secret":"..."}.
+
+Las antiguas variables INFINITE_MONITOR_ENABLED, INFINITE_MONITOR_URL e
+INFINITE_MONITOR_SHARED_SECRET ya no se leen: no pueden eludir una desactivación en el módulo.
+Para migrar una instalación de fase 2, registrar la misma URL y secreto desde el formulario y activar.
+La activación requiere el servicio actualizado con /api/noel/verify y las tablas de dashboards.
 
 ## Configuración Infinite Monitor
 NOEL_INTEGRATION_MODE=true
-NOEL_SHARED_SECRET=<mismo-secreto-de-Laravel>
+NOEL_SHARED_SECRET=<mismo-secreto-guardado-en-Integraciones-API>
 NOEL_MODEL=<provider:model-id-compatible-con-salida-estructurada>
 NOEL_MODEL_API_KEY=<clave-del-proveedor>
 
-No escribir claves en Git, navegador, prompt ni widgets. Configurar el proveedor/modelo explícitamente.
+No escribir claves en Git, prompts ni widgets. La clave del proveedor permanece en el servidor Infinite Monitor; el secreto compartido se introduce en el formulario administrativo por HTTPS y no se devuelve al navegador. Configurar el proveedor/modelo explícitamente.
 Usar Node 22+, npm ci, NOEL_INTEGRATION_MODE=true npx next build y NOEL_INTEGRATION_MODE=true npm start.
 En Windows, definir NOEL_INTEGRATION_MODE en el entorno del proceso/servicio antes de ejecutar npm.
 Se usa next build directamente: el postbuild original prepara un runtime de widgets que este modo no utiliza.
 Mantener NOEL_INTEGRATION_MODE=true tanto en build como en runtime. La instrumentación no precalienta
-el sandbox. En este modo src/proxy.ts permite únicamente POST /api/noel/generate y GET /api/noel/health.
+el sandbox. En este modo src/proxy.ts permite únicamente POST /api/noel/generate, POST /api/noel/verify y GET /api/noel/health.
 Desplegar una instancia dedicada a Noel; no combinar con el editor original abierto en el mismo proceso.
 
 ## Infraestructura
-- Origen HTTPS privado, accesible desde Laravel. En el reverse proxy permitir solo las dos rutas anteriores.
+- Origen HTTPS privado, accesible desde Laravel. En el reverse proxy permitir solo las tres rutas anteriores.
 - Timeout del reverse proxy superior a 90 s. Sin redirecciones; Laravel no sigue redirects.
 - Un proceso / una réplica en fase 2. La protección de replay reside en memoria por proceso durante
   121 segundos y no persiste reinicios. Antes de escalar a múltiples réplicas, mover los nonces a un
@@ -73,7 +91,7 @@ Estados: 401 firma inválida; 409 replay; 413 tamaño; 422 fuera de catálogo/co
 1. Integrar primero fase 1; después los PRs de fase 2 de ambos repositorios.
 2. Ejecutar pruebas Laravel de IntelligentDashboards y build de Vue.
 3. Ejecutar vitest, tsc y lint de Infinite; compilar en modo integración.
-4. Configurar secreto, proveedor y URL en un entorno de prueba. Consultar /api/noel/health.
+4. Configurar el servicio y usar el formulario Infinite Monitor en Integraciones API para guardar, probar y activar.
 5. Confirmar que /api/chat, /api/proxy, /api/widgets y / responden 404.
 6. Desde Vue generar “Compara ocupación por quirófano”, revisar, aplicar, guardar y publicar.
 7. Otro usuario autorizado debe consultar la publicación; un rol ajeno debe recibir 403.
@@ -82,5 +100,15 @@ Estados: 401 firma inválida; 409 replay; 413 tamaño; 422 fuera de catálogo/co
 10. Comparar cifras contra el mapa quirúrgico real. Las pruebas con mocks no validan conectividad real,
     permisos del proveedor, calidad de generación o rendimiento SQL Server.
 
-Rollback: INFINITE_MONITOR_ENABLED=false. Los dashboards guardados de fase 1 siguen operativos.
+Rollback: desactivar el registro INFINITE-MONITOR desde Integraciones API. Los dashboards guardados de fase 1 siguen operativos.
 No se han desplegado servicios, configurado claves ni ejecutado una llamada real de IA desde este desarrollo.
+
+## Verificación administrativa y API añadida
+GET /admin/integraciones/infinite-monitor/configuracion y POST en la misma ruta leen/guardan
+la configuración guiada. POST /admin/integraciones/{id}/infinite-monitor/verificar comprueba el servicio.
+Usan auth, EnsureIntegrationAdmin, CSRF de web y throttling. Activar/desactivar reutiliza las rutas existentes.
+
+POST /api/noel/verify usa el mismo protocolo HMAC con su propia ruta en la firma, y un body
+{"request_id":"UUID"}. Devuelve request_id, service=noel-dashboard-generator, protocol=1 y configured=true.
+No acepta una firma de /generate, no llama al proveedor y no devuelve secretos.
+Los contratos de generación y dashboards no cambian. Los demás proveedores conservan el transporte existente.

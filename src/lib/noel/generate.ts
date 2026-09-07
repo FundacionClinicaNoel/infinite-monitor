@@ -1,17 +1,10 @@
 import { generateObject } from "ai";
 import { createModel } from "@/lib/create-model";
-import { PROVIDERS } from "@/lib/model-registry";
-import { NoelError } from "./auth";
+import { modelConfiguration } from "./model-config";
 import { type Envelope, proposalSchema } from "./contract";
 
 export async function generateProposal(envelope: Envelope, signal: AbortSignal) {
-  const model = process.env.NOEL_MODEL || "";
-  const apiKey = process.env.NOEL_MODEL_API_KEY || "";
-  const separator = model.indexOf(":");
-  if (separator < 1 || !model.slice(separator + 1) || !apiKey
-    || !PROVIDERS.some(p => p.id === model.slice(0, separator))) {
-    throw new NoelError(503, "Proveedor de IA no configurado.");
-  }
+  const { model, apiKey } = modelConfiguration();
   const result = await generateObject({
     model: createModel(model, apiKey),
     schema: proposalSchema,

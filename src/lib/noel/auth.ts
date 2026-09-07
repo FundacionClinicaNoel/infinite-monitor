@@ -4,12 +4,12 @@ export class NoelError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 
-export function signingInput(timestamp: string, nonce: string, body: string): string {
-  return ["v1", "POST", "/api/noel/generate", timestamp, nonce, body].join("\n");
+export function signingInput(timestamp: string, nonce: string, body: string, path = "/api/noel/generate"): string {
+  return ["v1", "POST", path, timestamp, nonce, body].join("\n");
 }
 
 // Una instancia por proceso. Desplegar una sola réplica en fase 2 (ver documentación).
-export function createVerifier() {
+export function createVerifier(path = "/api/noel/generate") {
   const seen = new Map<string, number>();
   return (headers: Headers, body: string, secret: string, now = Math.floor(Date.now() / 1000)) => {
     if (secret.length < 32) throw new NoelError(503, "Integración no configurada.");
@@ -20,7 +20,7 @@ export function createVerifier() {
       || !/^[a-f0-9-]{36}$/i.test(nonce) || !/^[a-f0-9]{64}$/.test(signature)) {
       throw new NoelError(401, "Solicitud no autorizada.");
     }
-    const expected = createHmac("sha256", secret).update(signingInput(timestamp, nonce, body)).digest();
+    const expected = createHmac("sha256", secret).update(signingInput(timestamp, nonce, body, path)).digest();
     if (!timingSafeEqual(expected, Buffer.from(signature, "hex"))) throw new NoelError(401, "Solicitud no autorizada.");
     for (const [key, expires] of seen) if (expires < now) seen.delete(key);
     if (seen.has(nonce)) throw new NoelError(409, "Solicitud ya utilizada.");
