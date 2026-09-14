@@ -2,14 +2,17 @@
 
 ## Objetivo
 
-Convertir `dashboard-abastecimiento` en el primer gemelo digital operacional del hospital dentro de Infinite Monitor. La visualización 3D debe representar áreas fijas del hospital y superponer flujos vivos de abastecimiento, medicamentos, pacientes y eventos operacionales.
+Convertir `dashboard-abastecimiento` en el primer gemelo digital operacional del hospital dentro de Infinite Monitor. La visualización 3D representa áreas fijas y superpone flujos de abastecimiento, medicamentos, pacientes y eventos operacionales.
 
-## Principio de arquitectura
+## Arquitectura
 
-El renderer 3D no debe consultar tablas clínicas ni conocer detalles de Xenco, PlataformaNoel o Cruz Verde. Debe consumir un contrato estable de Digital Twin para que cada sistema se conecte mediante adaptadores.
+El renderer 3D no consulta tablas clínicas ni conoce detalles de Xenco, PlataformaNoel o Cruz Verde. Consume un contrato estable de Digital Twin para que cada sistema se conecte mediante adaptadores de solo lectura.
 
 ```text
 PlataformaNoel / Xenco / Cruz Verde
+              |
+              v
+         TwinDataSource
               |
               v
        Hospital Event Engine
@@ -18,74 +21,148 @@ PlataformaNoel / Xenco / Cruz Verde
       |                |
    Snapshot         Eventos
       |                |
-      v                v
- Hospital Digital Twin Core
-              |
-      +-------+--------+
-      |       |        |
-     REST  WebSocket   MCP
-      |       |        |
       +-------+--------+
               |
-        Infinite Monitor
+              v
+      /api/twin/hospital
+      /api/twin/events
+              |
+              v
+     dashboard-abastecimiento 3D
+              |
+         Infinite Monitor
 ```
 
-## Contrato mínimo
+## Fase 1 — renderer 3D
+
+Implementado:
+
+- Three.js mediante `@react-three/fiber` y `@react-three/drei`;
+- navegación orbital y zoom;
+- áreas seleccionables;
+- estados visuales por área;
+- flujos animados de abastecimiento, medicamentos y pacientes;
+- pausa/reanudación de animaciones;
+- panel contextual del área seleccionada;
+- dependencias 3D aisladas en el sandbox del widget mediante `deps.json`.
+
+## Fase 2 — TwinDataSource + Hospital Event Engine
+
+Implementado en `src/lib/hospital-twin/`:
+
+- `TwinDataSource`: contrato único para snapshot y eventos;
+- `DemoTwinDataSource`: proveedor determinista para desarrollo y validación;
+- `HttpTwinDataSource`: adapter HTTP de solo lectura para integrar una fuente real;
+- `HospitalEventEngine`: normalización de áreas, flujos, métricas y eventos;
+- filtrado de flujos que referencian áreas inexistentes;
+- recálculo server-side del resumen operacional;
+- allow-list de metadata permitida antes de exponer eventos;
+- eliminación obligatoria de `entityId` en eventos de paciente en esta fase;
+- API `GET /api/twin/hospital`;
+- API `GET /api/twin/events`;
+- actualización del widget cada 5 segundos;
+- conservación del último snapshot válido si una actualización posterior falla;
+- panel de eventos recientes dentro del widget 3D.
+
+### Selección de fuente
+
+Sin configuración adicional, Infinite Monitor usa `DemoTwinDataSource`.
+
+Para una integración remota se pueden configurar en el servidor:
+
+```env
+HOSPITAL_TWIN_SOURCE_URL=https://servidor-interno/twin
+HOSPITAL_TWIN_SOURCE_TOKEN=
+```
+
+El token nunca se entrega al widget. Se utiliza exclusivamente server-side por `HttpTwinDataSource`.
+
+La fuente remota debe implementar:
+
+```text
+GET {HOSPITAL_TWIN_SOURCE_URL}/snapshot
+GET {HOSPITAL_TWIN_SOURCE_URL}/events?since=...&cursor=...&limit=...
+```
+
+No se implementan operaciones POST/PUT/PATCH/DELETE desde el Digital Twin hacia los sistemas clínicos en esta fase.
+
+## Contrato de snapshot
+
+```ts
+export interface HospitalTwinSnapshot {
+  hospitalId: string;
+  generatedAt: string;
+  source: "demo" | "remote";
+  areas: TwinArea[];
+  flows: TwinFlow[];
+  summary: {
+    areas: number;
+    criticalAreas: number;
+    attentionAreas: number;
+    activeFlows: number;
+  };
+}
+```
 
 ### Área
 
 ```ts
-export type TwinArea = {
+export interface TwinArea {
   id: string;
   name: string;
-  floor?: string;
+  floor?: string | null;
+  type:
+    | "central"
+    | "pharmacy"
+    | "surgery"
+    | "operating_room"
+    | "hospitalization"
+    | "other";
   position: [number, number, number];
   size: [number, number, number];
   status: "normal" | "attention" | "critical";
-  metrics: Record<string, number | string | null>;
-};
+  metrics: Record<string, number | undefined>;
+}
 ```
 
 ### Flujo
 
 ```ts
-export type TwinFlow = {
+export interface TwinFlow {
   id: string;
-  sourceAreaId: string;
-  targetAreaId: string;
+  from: string;
+  to: string;
   kind: "supply" | "medication" | "patient" | "data";
   volume: number;
-  status: "normal" | "attention" | "critical";
-  updatedAt: string;
-};
+  status?: "normal" | "attention" | "critical";
+}
 ```
 
 ### Evento
 
 ```ts
-export type TwinEvent = {
+export interface TwinEvent {
   id: string;
-  type: string;
-  entityType: string;
-  entityId?: string;
-  sourceAreaId?: string;
-  targetAreaId?: string;
+  type:
+    | "hospital.area.updated"
+    | "supply.moved"
+    | "medication.moved"
+    | "patient.moved"
+    | "inventory.low"
+    | "operating_room.delayed"
+    | "custom";
+  entityType?: "supply" | "medication" | "patient" | "area" | "other";
+  entityId?: string | null;
+  from?: string | null;
+  to?: string | null;
+  areaId?: string | null;
   occurredAt: string;
-  metadata: Record<string, unknown>;
-};
+  severity: "normal" | "attention" | "critical";
+  metadata?: Record<string, string | number | boolean | null>;
+}
 ```
 
-## Endpoints previstos
-
-La primera integración real debe poder mapearse a endpoints equivalentes a:
-
-- `GET /api/twin/hospital`
-- `GET /api/twin/areas`
-- `GET /api/twin/flows`
-- `GET /api/twin/metrics`
-- `GET /api/twin/events`
-
-Para tiempo real, el cliente deberá poder recibir eventos como:
+## Eventos operacionales soportados
 
 - `hospital.area.updated`
 - `supply.moved`
@@ -94,32 +171,20 @@ Para tiempo real, el cliente deberá poder recibir eventos como:
 - `inventory.low`
 - `operating_room.delayed`
 
-## Estado de la primera fase
+## Privacidad y seguridad
 
-El template `dashboard-abastecimiento` implementa actualmente:
+El renderer no debe recibir datos clínicos identificables por defecto.
 
-- renderer 3D con Three.js mediante `@react-three/fiber`;
-- navegación orbital y zoom;
-- áreas seleccionables;
-- estado visual por área;
-- flujos animados de abastecimiento, medicamentos y pacientes;
-- pausa/reanudación de la animación;
-- panel contextual del área seleccionada;
-- dependencias 3D aisladas en el sandbox del widget mediante `deps.json`;
-- dataset demostrativo sin acceso a datos clínicos productivos.
+En Fase 2, el Event Engine aplica una allow-list de metadata operacional. Campos arbitrarios enviados por una integración externa se descartan. Además, cualquier `entityId` asociado a `entityType: "patient"` se elimina antes de devolver el evento al cliente.
+
+El adapter remoto es de solo lectura y tiene timeout. Una caída del proveedor genera HTTP 503 controlado; no se sustituye silenciosamente por datos demo porque eso podría hacer pasar datos ficticios por información real.
 
 ## Próximas fases
 
-1. Extraer el dataset demostrativo a un adaptador `TwinDataSource`.
-2. Crear el Hospital Event Engine y snapshot inicial.
-3. Conectar `dashboard-abastecimiento` al endpoint de snapshot.
-4. Incorporar actualización incremental por WebSocket.
-5. Guardar histórico para modo replay.
-6. Incorporar reglas de anomalías y cuellos de botella.
-7. Exponer herramientas MCP de solo lectura para Infinite Monitor/IA.
-8. Añadir simulaciones aisladas que nunca escriban directamente sobre producción.
-9. Incorporar BIM/IFC si se dispone del modelo físico del hospital; mantener el modelo lógico 3D como fallback.
-
-## Seguridad
-
-La vista 3D no debe incluir datos clínicos identificables por defecto. La capa de integración deberá aplicar autenticación, autorización, auditoría y minimización/pseudonimización según el rol antes de entregar datos al dashboard o a cualquier agente de IA.
+1. Crear el adapter real de PlataformaNoel para abastecimiento usando consultas/servicios existentes, sin acceso directo desde el renderer.
+2. Incorporar actualización incremental por WebSocket/SSE para sustituir el polling de 5 segundos.
+3. Guardar histórico para modo replay.
+4. Incorporar reglas de anomalías y detección de cuellos de botella.
+5. Exponer herramientas MCP de solo lectura para Infinite Monitor/IA.
+6. Añadir simulaciones aisladas que nunca escriban directamente sobre producción.
+7. Incorporar BIM/IFC si se dispone del modelo físico del hospital; mantener el modelo lógico 3D como fallback.
