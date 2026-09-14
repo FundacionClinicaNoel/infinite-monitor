@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import dashboardAbastecimiento from "@/templates/dashboard-abastecimiento.json";
 
 describe("dashboard-abastecimiento template", () => {
-  it("uses the hospital twin APIs instead of a hardcoded frontend dataset", () => {
+  it("uses the hospital twin APIs and realtime SSE stream", () => {
     expect(dashboardAbastecimiento.name).toBe("dashboard-abastecimiento");
     expect(dashboardAbastecimiento.widgetCount).toBe(1);
 
@@ -11,6 +11,10 @@ describe("dashboard-abastecimiento template", () => {
 
     expect(app).toContain('fetch("/api/twin/hospital"');
     expect(app).toContain("/api/twin/events?limit=12");
+    expect(app).toContain('new EventSource("/api/twin/stream")');
+    expect(app).toContain('addEventListener("snapshot"');
+    expect(app).toContain('addEventListener("events"');
+    expect(app).not.toContain("setInterval");
     expect(app).not.toContain("const areas:");
     expect(app).not.toContain("const flows:");
   });

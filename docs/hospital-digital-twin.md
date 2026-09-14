@@ -26,6 +26,7 @@ PlataformaNoel / Xenco / Cruz Verde
               v
       /api/twin/hospital
       /api/twin/events
+      /api/twin/stream  (SSE)
               |
               v
      dashboard-abastecimiento 3D
@@ -57,14 +58,36 @@ Implementado en `src/lib/hospital-twin/`:
 - filtrado de flujos que referencian áreas inexistentes;
 - recálculo server-side del resumen operacional;
 - allow-list de metadata permitida antes de exponer eventos;
-- eliminación obligatoria de `entityId` en eventos de paciente en esta fase;
+- eliminación obligatoria de `entityId` en eventos de paciente;
 - API `GET /api/twin/hospital`;
 - API `GET /api/twin/events`;
-- actualización del widget cada 5 segundos;
 - conservación del último snapshot válido si una actualización posterior falla;
 - panel de eventos recientes dentro del widget 3D.
 
-### Selección de fuente
+## Fase 4 — actualización incremental por SSE
+
+Implementado:
+
+- `GET /api/twin/stream` con `Content-Type: text/event-stream`;
+- bootstrap inicial del widget por REST y actualización posterior mediante `EventSource`;
+- eventos SSE nombrados `snapshot`, `events` y `warning`;
+- heartbeat periódico para mantener el canal y detectar cortes intermedios;
+- `retry` SSE para reconexión automática del navegador;
+- soporte de `Last-Event-ID`/cursor para reanudación del stream;
+- deduplicación de eventos en el widget por `event.id`;
+- refresco del snapshot al recibir cambios operacionales;
+- eliminación del `setInterval(..., 5000)` del renderer;
+- fallback REST puntual si el canal SSE entra en reconexión;
+- conservación del último estado válido si la fuente operacional no responde;
+- no se expone el token de la fuente remota al navegador.
+
+### Importante sobre el transporte hacia la fuente real
+
+La Fase 4 elimina el polling periódico del **renderer**. El endpoint SSE server-side utiliza actualmente el contrato `TwinDataSource.getEvents()` existente para obtener eventos del proveedor y publicarlos al navegador. Esto mantiene compatibilidad con la fuente demo y con adapters HTTP actuales.
+
+Cuando PlataformaNoel exponga un stream propio, el adapter podrá sustituir esa consulta incremental por push upstream sin modificar el dashboard 3D ni su contrato SSE.
+
+## Selección de fuente
 
 Sin configuración adicional, Infinite Monitor usa `DemoTwinDataSource`.
 
@@ -84,7 +107,7 @@ GET {HOSPITAL_TWIN_SOURCE_URL}/snapshot
 GET {HOSPITAL_TWIN_SOURCE_URL}/events?since=...&cursor=...&limit=...
 ```
 
-No se implementan operaciones POST/PUT/PATCH/DELETE desde el Digital Twin hacia los sistemas clínicos en esta fase.
+No se implementan operaciones POST/PUT/PATCH/DELETE desde el Digital Twin hacia los sistemas clínicos.
 
 ## Contrato de snapshot
 
@@ -162,6 +185,20 @@ export interface TwinEvent {
 }
 ```
 
+## Eventos SSE
+
+### `snapshot`
+
+Contiene el `HospitalTwinSnapshot` normalizado más reciente.
+
+### `events`
+
+Contiene un `HospitalTwinEventBatch`. El `id:` del frame SSE utiliza el cursor más reciente cuando está disponible, permitiendo que `EventSource` envíe `Last-Event-ID` al reconectar.
+
+### `warning`
+
+Informa una indisponibilidad temporal de la fuente operacional sin cerrar el canal inmediatamente. El widget conserva el último estado válido.
+
 ## Eventos operacionales soportados
 
 - `hospital.area.updated`
@@ -175,14 +212,16 @@ export interface TwinEvent {
 
 El renderer no debe recibir datos clínicos identificables por defecto.
 
-En Fase 2, el Event Engine aplica una allow-list de metadata operacional. Campos arbitrarios enviados por una integración externa se descartan. Además, cualquier `entityId` asociado a `entityType: "patient"` se elimina antes de devolver el evento al cliente.
+El Event Engine aplica una allow-list de metadata operacional. Campos arbitrarios enviados por una integración externa se descartan. Además, cualquier `entityId` asociado a `entityType: "patient"` se elimina antes de devolver el evento al cliente.
 
-El adapter remoto es de solo lectura y tiene timeout. Una caída del proveedor genera HTTP 503 controlado; no se sustituye silenciosamente por datos demo porque eso podría hacer pasar datos ficticios por información real.
+El adapter remoto es de solo lectura y tiene timeout. Una caída del proveedor genera errores controlados; no se sustituye silenciosamente por datos demo porque eso podría hacer pasar datos ficticios por información real.
+
+El stream SSE reutiliza exclusivamente snapshots y eventos ya normalizados por el Hospital Event Engine, por lo que no crea una vía paralela que evada las reglas de privacidad.
 
 ## Próximas fases
 
-1. Crear el adapter real de PlataformaNoel para abastecimiento usando consultas/servicios existentes, sin acceso directo desde el renderer.
-2. Incorporar actualización incremental por WebSocket/SSE para sustituir el polling de 5 segundos.
+1. Conectar el adapter real de PlataformaNoel para abastecimiento usando consultas/servicios existentes, sin acceso directo desde el renderer.
+2. Hacer que PlataformaNoel emita eventos push propios y conectarlos al SSE de Infinite Monitor sin polling server-side.
 3. Guardar histórico para modo replay.
 4. Incorporar reglas de anomalías y detección de cuellos de botella.
 5. Exponer herramientas MCP de solo lectura para Infinite Monitor/IA.
