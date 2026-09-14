@@ -21,7 +21,8 @@ export function getTwinDataSource(): TwinDataSource {
 
 export async function getHospitalTwinSnapshot() {
   const dataSource = getTwinDataSource();
-  return engine.normalizeSnapshot(await dataSource.getSnapshot());
+  const normalized = engine.normalizeSnapshot(await dataSource.getSnapshot());
+  return { ...normalized, source: dataSource.mode };
 }
 
 export async function getHospitalTwinEvents(query?: {
@@ -30,7 +31,8 @@ export async function getHospitalTwinEvents(query?: {
   limit?: number;
 }) {
   const dataSource = getTwinDataSource();
-  return engine.normalizeEvents(await dataSource.getEvents(query));
+  const normalized = engine.normalizeEvents(await dataSource.getEvents(query));
+  return { ...normalized, source: dataSource.mode };
 }
 
 export function getHospitalTwinSourceInfo() {
