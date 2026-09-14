@@ -52,7 +52,7 @@ describe("HospitalEventEngine", () => {
     });
   });
 
-  it("removes metadata fields that could expose patient identity", () => {
+  it("removes patient identifiers and non-allowlisted metadata", () => {
     const batch: HospitalTwinEventBatch = {
       generatedAt: "2026-09-14T12:00:00Z",
       source: "remote",
@@ -62,7 +62,7 @@ describe("HospitalEventEngine", () => {
           id: "event-1",
           type: "patient.moved",
           entityType: "patient",
-          entityId: "anon-42",
+          entityId: "patient-document-that-must-not-reach-ui",
           from: "hosp",
           to: "cirugia",
           occurredAt: "2026-09-14T11:59:00Z",
@@ -79,6 +79,7 @@ describe("HospitalEventEngine", () => {
 
     const result = engine.normalizeEvents(batch);
 
+    expect(result.events[0].entityId).toBeNull();
     expect(result.events[0].metadata).toEqual({
       quantity: 1,
       procedureCode: "534001",
