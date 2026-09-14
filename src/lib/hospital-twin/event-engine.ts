@@ -82,7 +82,12 @@ function normalizeEvent(event: TwinEvent): TwinEvent {
   return {
     ...event,
     id: String(event.id),
-    entityId: event.entityId ? String(event.entityId) : null,
+    entityId:
+      event.entityType === "patient"
+        ? null
+        : event.entityId
+          ? String(event.entityId)
+          : null,
     occurredAt: new Date(event.occurredAt).toISOString(),
     severity: normalizeStatus(event.severity),
     metadata: sanitizeMetadata(event.metadata),
