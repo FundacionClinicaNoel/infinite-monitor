@@ -227,3 +227,19 @@ El stream SSE reutiliza exclusivamente snapshots y eventos ya normalizados por e
 5. Exponer herramientas MCP de solo lectura para Infinite Monitor/IA.
 6. Añadir simulaciones aisladas que nunca escriban directamente sobre producción.
 7. Incorporar BIM/IFC si se dispone del modelo físico del hospital; mantener el modelo lógico 3D como fallback.
+
+## Fase 5 — informe operativo de abastecimiento
+
+Implementado como segundo widget de dashboard-abastecimiento:
+
+- KPIs trazables: Por atender, En proceso, Por cerrar, Finalizados, salud promedio de stock y volumen en flujo;
+- filtros inmediatos por texto, estado y periodo;
+- estado agregado por Central, Farmacia/Cruz Verde, Cirugía y bodegas Q01–Q05;
+- tabla de flujos entre áreas y eventos operacionales sanitizados;
+- actualización inicial por REST e incremental por SSE;
+- indicador explícito FUENTE REAL/DEMO, sin presentar datos ficticios como reales;
+- exportación CSV e impresión/PDF desde el navegador;
+- diseño responsive con desplazamiento controlado para tablas;
+- ausencia de nombres, documentos e identificadores clínicos.
+
+Las métricas no se inventan en el renderer: se calculan exclusivamente desde HospitalTwinSnapshot y HospitalTwinEventBatch. Cuando un valor no está disponible, el informe muestra —.
