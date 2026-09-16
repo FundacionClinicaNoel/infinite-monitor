@@ -52,6 +52,61 @@ describe("HospitalEventEngine", () => {
     });
   });
 
+  it("preserves safe operational detail and surgical process without identities", () => {
+    const snapshot = {
+      hospitalId: "clinica-noel",
+      generatedAt: "2026-09-16T12:00:00Z",
+      source: "remote",
+      areas: [{
+        id: "farmacia",
+        name: "Farmacia",
+        type: "pharmacy",
+        position: [0, 0, 0],
+        size: [2, 1, 2],
+        status: "attention",
+        metrics: {
+          activity: 14,
+          operationalLabel: "Despachos del día",
+          warehouseCode: "FAR",
+          pendingBreakdown: [{ label: "Pendientes", count: 4, patientName: "NO DEBE SALIR" }],
+          patientName: "NO DEBE SALIR",
+        },
+      }],
+      flows: [],
+      process: {
+        generatedAt: "2026-09-16T12:00:00Z",
+        version: "v1",
+        source: "PlataformaNoel",
+        floors: [{
+          id: "floor-6",
+          number: "6",
+          name: "Trámite y Auditoría",
+          status: "normal",
+          total: 12,
+          stages: [{
+            id: "tramite",
+            name: "Trámite",
+            count: 12,
+            status: "normal",
+            description: "Registros agregados",
+            patientDocument: "NO DEBE SALIR",
+          }],
+        }],
+        transitions: [],
+        summary: { records: 12 },
+      },
+      summary: { areas: 0, criticalAreas: 0, attentionAreas: 0, activeFlows: 0 },
+    } as unknown as HospitalTwinSnapshot;
+
+    const result = engine.normalizeSnapshot(snapshot);
+
+    expect(result.areas[0].metrics.operationalLabel).toBe("Despachos del día");
+    expect(result.areas[0].metrics.pendingBreakdown).toEqual([{ label: "Pendientes", count: 4 }]);
+    expect(result.areas[0].metrics).not.toHaveProperty("patientName");
+    expect(result.process?.floors[0].stages[0]).not.toHaveProperty("patientDocument");
+    expect(result.process?.summary.records).toBe(12);
+  });
+
   it("removes patient identifiers and non-allowlisted metadata", () => {
     const batch: HospitalTwinEventBatch = {
       generatedAt: "2026-09-14T12:00:00Z",
