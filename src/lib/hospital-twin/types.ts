@@ -1,6 +1,17 @@
 export type TwinStatus = "normal" | "attention" | "critical";
 export type TwinFlowKind = "supply" | "medication" | "patient" | "data";
 
+export interface TwinMetricBreakdown {
+  label: string;
+  count: number;
+}
+
+export type TwinMetricValue =
+  | number
+  | string
+  | TwinMetricBreakdown[]
+  | undefined;
+
 export interface TwinArea {
   id: string;
   name: string;
@@ -14,7 +25,17 @@ export interface TwinArea {
     activity?: number;
     occupancy?: number;
     pending?: number;
-    [key: string]: number | undefined;
+    operationalLabel?: string;
+    totalArticles?: number;
+    healthyArticles?: number;
+    lowStockArticles?: number;
+    outOfStockArticles?: number;
+    warehouseCode?: string;
+    warehouseName?: string;
+    lastMovementAt?: string;
+    activityBreakdown?: TwinMetricBreakdown[];
+    pendingBreakdown?: TwinMetricBreakdown[];
+    [key: string]: TwinMetricValue;
   };
 }
 
@@ -47,12 +68,51 @@ export interface TwinEvent {
   metadata?: Record<string, string | number | boolean | null>;
 }
 
+export interface TwinProcessStage {
+  id: string;
+  name: string;
+  count: number;
+  kind?: string;
+  status: TwinStatus;
+  description?: string;
+  source?: string;
+  shareOfFloor?: number;
+}
+
+export interface TwinProcessFloor {
+  id: string;
+  number: string;
+  name: string;
+  status: TwinStatus;
+  total: number;
+  stages: TwinProcessStage[];
+}
+
+export interface TwinProcessTransition {
+  id: string;
+  from: string;
+  to: string;
+  count: number;
+  status: TwinStatus;
+  description?: string;
+}
+
+export interface HospitalProcessSnapshot {
+  generatedAt: string;
+  version: string;
+  source: string;
+  floors: TwinProcessFloor[];
+  transitions: TwinProcessTransition[];
+  summary: Record<string, number>;
+}
+
 export interface HospitalTwinSnapshot {
   hospitalId: string;
   generatedAt: string;
   source: "demo" | "remote";
   areas: TwinArea[];
   flows: TwinFlow[];
+  process?: HospitalProcessSnapshot;
   summary: {
     areas: number;
     criticalAreas: number;
